@@ -1,38 +1,35 @@
 class Item {
   int? id;
-  int invoiceId;
-  String productName;
+  String name;
   double price;
-  int qty;
+  String category;
+  String? description;
 
   Item({
     this.id,
-    required this.invoiceId,
-    required this.productName,
+    required this.name,
     required this.price,
-    required this.qty,
+    required this.category,
+    this.description,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'invoice_id': invoiceId,
-      'product_name': productName,
+      'name': name,
       'price': price,
-      'qty': qty,
+      'category': category,
+      'description': description,
     };
   }
 
   factory Item.fromMap(Map<String, dynamic> map) {
     return Item(
       id: map['id'],
-      invoiceId: map['invoice_id'],
-      productName: map['product_name'],
+      name: map['name'],
       price: map['price'],
-      qty: map['qty'],
+      category: map['category'],
+      description: map['description'],
     );
   }
-
-  // 🔥 TOTAL PER ITEM
-  double get total => price * qty;
 }
