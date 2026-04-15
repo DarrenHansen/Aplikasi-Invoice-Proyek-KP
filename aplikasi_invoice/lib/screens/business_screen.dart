@@ -64,7 +64,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
       ),
     );
   }
-//
+///
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
