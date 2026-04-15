@@ -10,6 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # ... existing dependencies
+  sqflite_common_ffi: ^2.3.0+4  # Tambahkan ini untuk web support
   
   # UI & Icons
   cupertino_icons: ^1.0.8
