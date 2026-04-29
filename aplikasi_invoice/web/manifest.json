@@ -1,6 +1,6 @@
 {
-    "name": "aplikasi_invoice",
-    "short_name": "aplikasi_invoice",
+    "name": "testapp",
+    "short_name": "testapp",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

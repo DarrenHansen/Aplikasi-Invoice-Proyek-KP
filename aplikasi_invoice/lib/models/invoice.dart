@@ -1,85 +1,168 @@
 import 'item.dart';
 
-enum PaymentStatus { paid, unpaid }
+/// Enum status invoice
+enum InvoiceStatus {
+  paid,
+  unpaid,
+  overdue,
+}
 
-class InvoiceItem {
-  Item item;
-  int quantity;
-
-  InvoiceItem({required this.item, required this.quantity});
-
-  double get subtotal => item.price * quantity;
-
-  Map<String, dynamic> toMap() {
-    return {
-      'itemId': item.id,
-      'itemName': item.name,
-      'price': item.price,
-      'quantity': quantity,
-    };
+/// Extension untuk mapping status ke string & warna
+extension InvoiceStatusExtension on InvoiceStatus {
+  String get label {
+    switch (this) {
+      case InvoiceStatus.paid:
+        return 'Paid';
+      case InvoiceStatus.unpaid:
+        return 'Unpaid';
+      case InvoiceStatus.overdue:
+        return 'Overdue';
+    }
   }
 
-  factory InvoiceItem.fromMap(Map<String, dynamic> map, Item item) {
-    return InvoiceItem(item: item, quantity: map['quantity']);
+  String get dbValue {
+    switch (this) {
+      case InvoiceStatus.paid:
+        return 'paid';
+      case InvoiceStatus.unpaid:
+        return 'unpaid';
+      case InvoiceStatus.overdue:
+        return 'overdue';
+    }
+  }
+
+  static InvoiceStatus fromDbValue(String value) {
+    switch (value) {
+      case 'paid':
+        return InvoiceStatus.paid;
+      case 'unpaid':
+        return InvoiceStatus.unpaid;
+      case 'overdue':
+        return InvoiceStatus.overdue;
+      default:
+        return InvoiceStatus.unpaid;
+    }
   }
 }
 
+/// Model Invoice
 class Invoice {
   int? id;
   String invoiceNumber;
-  DateTime date;
-  int businessId;
-  int clientId;
-  List<InvoiceItem> items;
-  double tax;
-  double? discount;
+  String customerName;
+  String customerEmail;
+  String customerPhone;
+  String date;
+  String dueDate;
   double total;
-  PaymentStatus paymentStatus;
-  String? signaturePath;
+  double tax;
+  double discount;
+  String notes;
+  InvoiceStatus status;
+  List<Item> items;
 
   Invoice({
     this.id,
     required this.invoiceNumber,
+    required this.customerName,
+    this.customerEmail = '',
+    this.customerPhone = '',
     required this.date,
-    required this.businessId,
-    required this.clientId,
-    required this.items,
-    required this.tax,
-    this.discount,
-    required this.total,
-    required this.paymentStatus,
-    this.signaturePath,
+    required this.dueDate,
+    this.total = 0,
+    this.tax = 0,
+    this.discount = 0,
+    this.notes = '',
+    this.status = InvoiceStatus.unpaid,
+    this.items = const [],
   });
 
+  /// Subtotal sebelum pajak & diskon
   double get subtotal {
-    return items.fold(0, (sum, item) => sum + item.subtotal);
+    double sum = 0;
+    for (var item in items) {
+      sum += item.total;
+    }
+    return sum;
   }
 
-  double get taxAmount {
-    return subtotal * (tax / 100);
+  /// Grand total = subtotal + pajak - diskon
+  double get grandTotal {
+    final taxAmount = subtotal * (tax / 100);
+    return subtotal + taxAmount - discount;
   }
 
-  double get discountAmount {
-    return discount ?? 0;
-  }
-
-  double calculateTotal() {
-    return subtotal + taxAmount - discountAmount;
+  /// Apakah invoice sudah overdue (berdasarkan dueDate)
+  bool get isOverdue {
+    final due = DateTime.tryParse(dueDate);
+    if (due == null) return false;
+    return DateTime.now().isAfter(due) && status != InvoiceStatus.paid;
   }
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'invoiceNumber': invoiceNumber,
-      'date': date.toIso8601String(),
-      'businessId': businessId,
-      'clientId': clientId,
-      'items': items.map((e) => e.toMap()).toList(),
+      'invoice_number': invoiceNumber,
+      'customer_name': customerName,
+      'customer_email': customerEmail,
+      'customer_phone': customerPhone,
+      'date': date,
+      'due_date': dueDate,
+      'total': grandTotal,
       'tax': tax,
       'discount': discount,
-      'total': total,
-      'paymentStatus': paymentStatus.index,
-      'signaturePath': signaturePath,
+      'notes': notes,
+      'status': status.dbValue,
     };
+  }
+
+  factory Invoice.fromMap(Map<String, dynamic> map) {
+    return Invoice(
+      id: map['id'],
+      invoiceNumber: map['invoice_number'] ?? '',
+      customerName: map['customer_name'] ?? '',
+      customerEmail: map['customer_email'] ?? '',
+      customerPhone: map['customer_phone'] ?? '',
+      date: map['date'] ?? '',
+      dueDate: map['due_date'] ?? '',
+      total: (map['total'] as num?)?.toDouble() ?? 0,
+      tax: (map['tax'] as num?)?.toDouble() ?? 0,
+      discount: (map['discount'] as num?)?.toDouble() ?? 0,
+      notes: map['notes'] ?? '',
+      status: InvoiceStatusExtension.fromDbValue(map['status'] ?? 'unpaid'),
+    );
+  }
+
+  /// CopyWith untuk update parsial
+  Invoice copyWith({
+    int? id,
+    String? invoiceNumber,
+    String? customerName,
+    String? customerEmail,
+    String? customerPhone,
+    String? date,
+    String? dueDate,
+    double? total,
+    double? tax,
+    double? discount,
+    String? notes,
+    InvoiceStatus? status,
+    List<Item>? items,
+  }) {
+    return Invoice(
+      id: id ?? this.id,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      customerName: customerName ?? this.customerName,
+      customerEmail: customerEmail ?? this.customerEmail,
+      customerPhone: customerPhone ?? this.customerPhone,
+      date: date ?? this.date,
+      dueDate: dueDate ?? this.dueDate,
+      total: total ?? this.total,
+      tax: tax ?? this.tax,
+      discount: discount ?? this.discount,
+      notes: notes ?? this.notes,
+      status: status ?? this.status,
+      items: items ?? this.items,
+    );
   }
 }

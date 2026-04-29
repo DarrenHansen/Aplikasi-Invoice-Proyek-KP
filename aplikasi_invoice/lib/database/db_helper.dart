@@ -1,19 +1,13 @@
-import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/business.dart';
-import '../models/client.dart';
-import '../models/item.dart';
 
-class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
+/// Database Helper - Singleton pattern
+/// Mengelola semua operasi CRUD untuk invoices dan items
+class DBHelper {
+  static final DBHelper instance = DBHelper._init();
   static Database? _database;
 
-  DatabaseHelper._init();
-
-  static Future<void> init() async {
-    await instance.database;
-  }
+  DBHelper._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -25,261 +19,322 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
-  Future<void> _createDB(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE businesses(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        logoPath TEXT,
-        name TEXT NOT NULL,
-        owner TEXT NOT NULL,
-        address TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        website TEXT,
-        paymentMethods TEXT
-      )
-    ''');
+  /// Membuat tabel database saat pertama kali
+  Future _createDB(Database db, int version) async {
+    const idType = 'INTEGER PRIMARY KEY AUTOINCREMENT';
+    const textType = 'TEXT NOT NULL';
+    const textTypeNull = 'TEXT';
+    const realType = 'REAL NOT NULL';
 
     await db.execute('''
-      CREATE TABLE clients(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT
+      CREATE TABLE invoices(
+        id $idType,
+        invoice_number $textType,
+        customer_name $textType,
+        customer_email $textTypeNull,
+        customer_phone $textTypeNull,
+        date $textType,
+        due_date $textType,
+        total $realType DEFAULT 0,
+        tax $realType DEFAULT 0,
+        discount $realType DEFAULT 0,
+        notes $textTypeNull,
+        status $textType DEFAULT 'unpaid',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
       )
     ''');
 
     await db.execute('''
       CREATE TABLE items(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        price REAL NOT NULL,
-        category TEXT NOT NULL,
-        description TEXT
+        id $idType,
+        invoice_id INTEGER NOT NULL,
+        product_name $textType,
+        description $textTypeNull,
+        price $realType DEFAULT 0,
+        qty INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY(invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
       )
     ''');
 
-    await db.execute('''
-      CREATE TABLE invoices(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoiceNumber TEXT NOT NULL,
-        date TEXT NOT NULL,
-        businessId INTEGER NOT NULL,
-        clientId INTEGER NOT NULL,
-        items TEXT NOT NULL,
-        tax REAL NOT NULL,
-        discount REAL,
-        total REAL NOT NULL,
-        paymentStatus INTEGER NOT NULL,
-        signaturePath TEXT,
-        FOREIGN KEY (businessId) REFERENCES businesses (id),
-        FOREIGN KEY (clientId) REFERENCES clients (id)
-      )
-    ''');
-  }
-
-  // Business CRUD
-  Future<int> insertBusiness(Business business) async {
-    final db = await database;
-    return await db.insert('businesses', business.toMap());
-  }
-
-  Future<List<Business>> getBusinesses() async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query('businesses');
-    return result.map((map) => Business.fromMap(map)).toList();
-  }
-
-  Future<int> updateBusiness(Business business) async {
-    final db = await database;
-    return await db.update(
-      'businesses',
-      business.toMap(),
-      where: 'id = ?',
-      whereArgs: [business.id],
+    // Index untuk pencarian
+    await db.execute(
+      'CREATE INDEX idx_invoice_number ON invoices(invoice_number)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_customer_name ON invoices(customer_name)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_invoice_status ON invoices(status)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_item_invoice_id ON items(invoice_id)',
     );
   }
 
-  Future<int> deleteBusiness(int id) async {
-    final db = await database;
-    return await db.delete('businesses', where: 'id = ?', whereArgs: [id]);
-  }
-
-  // Client CRUD
-  Future<int> insertClient(Client client) async {
-    final db = await database;
-    return await db.insert('clients', client.toMap());
-  }
-
-  Future<List<Client>> getClients() async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query('clients');
-    return result.map((map) => Client.fromMap(map)).toList();
-  }
-
-  Future<int> updateClient(Client client) async {
-    final db = await database;
-    return await db.update(
-      'clients',
-      client.toMap(),
-      where: 'id = ?',
-      whereArgs: [client.id],
-    );
-  }
-
-  Future<int> deleteClient(int id) async {
-    final db = await database;
-    return await db.delete('clients', where: 'id = ?', whereArgs: [id]);
-  }
-
-  // Item CRUD
-  Future<int> insertItem(Item item) async {
-    final db = await database;
-    return await db.insert('items', item.toMap());
-  }
-
-  Future<List<Item>> getItems() async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query('items');
-    return result.map((map) => Item.fromMap(map)).toList();
-  }
-
-  Future<int> updateItem(Item item) async {
-    final db = await database;
-    return await db.update(
-      'items',
-      item.toMap(),
-      where: 'id = ?',
-      whereArgs: [item.id],
-    );
-  }
-
-  Future<int> deleteItem(int id) async {
-    final db = await database;
-    return await db.delete('items', where: 'id = ?', whereArgs: [id]);
-  }
-
-  // Invoice CRUD
-  Future<int> insertInvoice(Map<String, dynamic> invoice) async {
-    final db = await database;
-    final Map<String, dynamic> invoiceData = Map<String, dynamic>.from(invoice);
-
-    // Convert items list to JSON string
-    if (invoiceData['items'] is List) {
-      invoiceData['items'] = jsonEncode(invoiceData['items']);
+  /// Migrasi database saat upgrade version
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Migration v1 -> v2: tambah kolom baru
+      await db.execute(
+        'ALTER TABLE invoices ADD COLUMN customer_email TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE invoices ADD COLUMN customer_phone TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE invoices ADD COLUMN notes TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE invoices ADD COLUMN created_at TEXT DEFAULT (datetime("now","localtime"))',
+      );
+      await db.execute(
+        'ALTER TABLE items ADD COLUMN description TEXT',
+      );
     }
-
-    return await db.insert('invoices', invoiceData);
   }
 
-  Future<List<Map<String, dynamic>>> getInvoices() async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query(
+  // ==========================================
+  // INVOICE CRUD OPERATIONS
+  // ==========================================
+
+  /// Insert invoice baru
+  Future<int> insertInvoice(Map<String, dynamic> data) async {
+    final db = await instance.database;
+    return await db.insert('invoices', data);
+  }
+
+  /// Update invoice berdasarkan id
+  Future<int> updateInvoice(int id, Map<String, dynamic> data) async {
+    final db = await instance.database;
+    return await db.update(
       'invoices',
-      orderBy: 'date DESC',
+      data,
+      where: 'id = ?',
+      whereArgs: [id],
     );
-
-    final List<Map<String, dynamic>> invoices = [];
-
-    for (var map in result) {
-      final Map<String, dynamic> invoice = Map<String, dynamic>.from(map);
-
-      // Decode items from JSON string to List
-      final String itemsJson = invoice['items'] as String;
-      invoice['items'] = jsonDecode(itemsJson) as List<dynamic>;
-
-      invoices.add(invoice);
-    }
-
-    return invoices;
   }
 
-  Future<Map<String, dynamic>?> getInvoiceById(int id) async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query(
+  /// Hapus invoice berdasarkan id (cascade ke items)
+  Future<int> deleteInvoice(int id) async {
+    final db = await instance.database;
+    return await db.delete(
       'invoices',
       where: 'id = ?',
       whereArgs: [id],
     );
-
-    if (result.isEmpty) return null;
-
-    final Map<String, dynamic> invoice = Map<String, dynamic>.from(
-      result.first,
-    );
-    final String itemsJson = invoice['items'] as String;
-    invoice['items'] = jsonDecode(itemsJson) as List<dynamic>;
-
-    return invoice;
   }
 
-  Future<int> updateInvoice(Map<String, dynamic> invoice) async {
-    final db = await database;
-    final Map<String, dynamic> invoiceData = Map<String, dynamic>.from(invoice);
+  /// Ambil semua invoice, diurutkan berdasarkan tanggal terbaru
+  Future<List<Map<String, dynamic>>> getInvoices() async {
+    final db = await instance.database;
+    return await db.query(
+      'invoices',
+      orderBy: 'created_at DESC',
+    );
+  }
 
-    // Convert items list to JSON string
-    if (invoiceData['items'] is List) {
-      invoiceData['items'] = jsonEncode(invoiceData['items']);
-    }
+  /// Ambil invoice berdasarkan id
+  Future<Map<String, dynamic>?> getInvoiceById(int id) async {
+    final db = await instance.database;
+    final results = await db.query(
+      'invoices',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (results.isEmpty) return null;
+    return results.first;
+  }
 
+  /// Cari invoice berdasarkan keyword (nama customer / nomor invoice)
+  Future<List<Map<String, dynamic>>> searchInvoices(String keyword) async {
+    final db = await instance.database;
+    return await db.query(
+      'invoices',
+      where: 'customer_name LIKE ? OR invoice_number LIKE ?',
+      whereArgs: ['%$keyword%', '%$keyword%'],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  /// Filter invoice berdasarkan status
+  Future<List<Map<String, dynamic>>> filterInvoicesByStatus(
+    String status,
+  ) async {
+    final db = await instance.database;
+    return await db.query(
+      'invoices',
+      where: 'status = ?',
+      whereArgs: [status],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  /// Update status invoice
+  Future<int> updateInvoiceStatus(int id, String status) async {
+    final db = await instance.database;
     return await db.update(
       'invoices',
-      invoiceData,
+      {'status': status},
       where: 'id = ?',
-      whereArgs: [invoice['id']],
+      whereArgs: [id],
     );
   }
 
-  Future<int> deleteInvoice(int id) async {
-    final db = await database;
-    return await db.delete('invoices', where: 'id = ?', whereArgs: [id]);
+  /// Ambil statistik invoice
+  Future<Map<String, dynamic>> getInvoiceStats() async {
+    final db = await instance.database;
+
+    final totalInvoices = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM invoices'),
+    );
+
+    final paidInvoices = Sqflite.firstIntValue(
+      await db.rawQuery(
+        "SELECT COUNT(*) FROM invoices WHERE status = 'paid'",
+      ),
+    );
+
+    final unpaidInvoices = Sqflite.firstIntValue(
+      await db.rawQuery(
+        "SELECT COUNT(*) FROM invoices WHERE status = 'unpaid'",
+      ),
+    );
+
+    final overdueInvoices = Sqflite.firstIntValue(
+      await db.rawQuery(
+        "SELECT COUNT(*) FROM invoices WHERE status = 'overdue'",
+      ),
+    );
+
+    final totalRevenue = Sqflite.firstIntValue(
+      await db.rawQuery(
+        "SELECT CAST(SUM(total) AS INTEGER) FROM invoices WHERE status = 'paid'",
+      ),
+    );
+
+    return {
+      'total': totalInvoices ?? 0,
+      'paid': paidInvoices ?? 0,
+      'unpaid': unpaidInvoices ?? 0,
+      'overdue': overdueInvoices ?? 0,
+      'revenue': totalRevenue ?? 0,
+    };
   }
 
-  // Additional helper methods
-  Future<List<Map<String, dynamic>>> getInvoicesByStatus(
-    int paymentStatus,
-  ) async {
-    final db = await database;
-    final List<Map<String, dynamic>> result = await db.query(
+  // ==========================================
+  // ITEM CRUD OPERATIONS
+  // ==========================================
+
+  /// Insert item baru
+  Future<int> insertItem(Map<String, dynamic> data) async {
+    final db = await instance.database;
+    return await db.insert('items', data);
+  }
+
+  /// Insert banyak items sekaligus (batch)
+  Future<void> insertItems(List<Map<String, dynamic>> items) async {
+    final db = await instance.database;
+    final batch = db.batch();
+    for (var item in items) {
+      batch.insert('items', item);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Update item berdasarkan id
+  Future<int> updateItem(int id, Map<String, dynamic> data) async {
+    final db = await instance.database;
+    return await db.update(
+      'items',
+      data,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Hapus item berdasarkan id
+  Future<int> deleteItem(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'items',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Ambil semua items berdasarkan invoice_id
+  Future<List<Map<String, dynamic>>> getItems(int invoiceId) async {
+    final db = await instance.database;
+    return await db.query(
+      'items',
+      where: 'invoice_id = ?',
+      whereArgs: [invoiceId],
+      orderBy: 'id ASC',
+    );
+  }
+
+  /// Hapus semua items berdasarkan invoice_id
+  Future<int> deleteItemsByInvoiceId(int invoiceId) async {
+    final db = await instance.database;
+    return await db.delete(
+      'items',
+      where: 'invoice_id = ?',
+      whereArgs: [invoiceId],
+    );
+  }
+
+  // ==========================================
+  // UTILITY
+  // ==========================================
+
+  /// Cek apakah invoice_number sudah ada
+  Future<bool> isInvoiceNumberExists(String invoiceNumber) async {
+    final db = await instance.database;
+    final results = await db.query(
       'invoices',
-      where: 'paymentStatus = ?',
-      whereArgs: [paymentStatus],
-      orderBy: 'date DESC',
+      where: 'invoice_number = ?',
+      whereArgs: [invoiceNumber],
+    );
+    return results.isNotEmpty;
+  }
+
+  /// Generate nomor invoice unik
+  /// Format: INV-YYYYMMDD-XXXX
+  Future<String> generateInvoiceNumber() async {
+    final now = DateTime.now();
+    final dateStr = '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}';
+    final prefix = 'INV-$dateStr';
+
+    // Cari invoice terakhir dengan prefix yang sama hari ini
+    final db = await instance.database;
+    final results = await db.rawQuery(
+      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE '$prefix%' ORDER BY invoice_number DESC LIMIT 1",
     );
 
-    final List<Map<String, dynamic>> invoices = [];
-
-    for (var map in result) {
-      final Map<String, dynamic> invoice = Map<String, dynamic>.from(map);
-      final String itemsJson = invoice['items'] as String;
-      invoice['items'] = jsonDecode(itemsJson) as List<dynamic>;
-      invoices.add(invoice);
+    int seq = 1;
+    if (results.isNotEmpty) {
+      final lastNumber = results.first['invoice_number'] as String;
+      final parts = lastNumber.split('-');
+      if (parts.length == 3) {
+        seq = int.tryParse(parts[2]) ?? 0;
+        seq++;
+      }
     }
 
-    return invoices;
+    return '$prefix-${_fourDigits(seq)}';
   }
 
-  Future<List<Map<String, dynamic>>> searchInvoicesByClientName(
-    String clientName,
-  ) async {
-    final db = await database;
-    // This is a simplified search - you might want to join with clients table
-    final List<Map<String, dynamic>> result = await db.query(
-      'invoices',
-      orderBy: 'date DESC',
-    );
-
-    final List<Map<String, dynamic>> invoices = [];
-
-    for (var map in result) {
-      final Map<String, dynamic> invoice = Map<String, dynamic>.from(map);
-      final String itemsJson = invoice['items'] as String;
-      invoice['items'] = jsonDecode(itemsJson) as List<dynamic>;
-      invoices.add(invoice);
-    }
-
-    return invoices;
-  }
+  String _twoDigits(int n) => n.toString().padLeft(2, '0');
+  String _fourDigits(int n) => n.toString().padLeft(4, '0');
 }

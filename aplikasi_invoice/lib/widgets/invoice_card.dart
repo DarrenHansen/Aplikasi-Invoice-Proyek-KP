@@ -1,131 +1,151 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import '../models/invoice.dart';
+import '../utils/helpers.dart';
+import 'status_badge.dart';
 
+/// Invoice Card Widget
+/// Card modern untuk menampilkan invoice di list view
 class InvoiceCard extends StatelessWidget {
-  final Map<String, dynamic> invoice;
+  final Invoice invoice;
   final VoidCallback onTap;
 
-  const InvoiceCard({super.key, required this.invoice, required this.onTap});
+  const InvoiceCard({
+    super.key,
+    required this.invoice,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final date = DateTime.parse(invoice['date']);
-    final isPaid = invoice['paymentStatus'] == 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2A2A4A) : const Color(0xFFF0F0F5),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Ikon
+            _buildIcon(context, isDark),
+            const SizedBox(width: 14),
+
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.blue.shade700, Colors.blue.shade400],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.receipt,
-                      color: Colors.white,
-                      size: 28,
+                  // Nomor Invoice
+                  Text(
+                    invoice.invoiceNumber,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? const Color(0xFF8888AA)
+                          : const Color(0xFF9999AA),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          invoice['invoiceNumber'],
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Client ID: ${invoice['clientId']}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 4),
+
+                  // Nama Customer
+                  Text(
+                    invoice.customerName,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : const Color(0xFF1A1A2E),
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isPaid
-                          ? Colors.green.shade100
-                          : Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isPaid ? 'LUNAS' : 'BELUM BAYAR',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isPaid
-                            ? Colors.green.shade800
-                            : Colors.red.shade800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+                  const SizedBox(height: 4),
+
+                  // Tanggal
                   Row(
                     children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 16,
-                        color: Colors.grey,
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: isDark
+                            ? const Color(0xFF6666AA)
+                            : const Color(0xFFBBBBCC),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        DateFormat('dd MMM yyyy').format(date),
-                        style: const TextStyle(
+                        Helpers.formatDate(invoice.date),
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey,
+                          color: isDark
+                              ? const Color(0xFF6666AA)
+                              : const Color(0xFFBBBBCC),
                         ),
                       ),
                     ],
                   ),
-                  Text(
-                    NumberFormat.currency(
-                      locale: 'id',
-                      symbol: 'Rp ',
-                      decimalDigits: 0,
-                    ).format(invoice['total']),
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
-                    ),
-                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+
+            // Status & Total
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                StatusBadge(status: invoice.status),
+                const SizedBox(height: 8),
+                Text(
+                  Helpers.formatCurrency(invoice.total),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildIcon(BuildContext context, bool isDark) {
+    Color iconBg;
+    Color iconColor;
+
+    switch (invoice.status) {
+      case InvoiceStatus.paid:
+        iconBg = isDark ? const Color(0xFF1A3A2A) : const Color(0xFFE8F5E9);
+        iconColor = isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32);
+        break;
+      case InvoiceStatus.unpaid:
+        iconBg = isDark ? const Color(0xFF1A1A3A) : const Color(0xFFE8EAF6);
+        iconColor = isDark ? const Color(0xFF7986CB) : const Color(0xFF3F51B5);
+        break;
+      case InvoiceStatus.overdue:
+        iconBg = isDark ? const Color(0xFF3A1A1A) : const Color(0xFFFFEBEE);
+        iconColor = isDark ? const Color(0xFFEF5350) : const Color(0xFFC62828);
+        break;
+    }
+
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: iconBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        Icons.receipt_long_outlined,
+        color: iconColor,
+        size: 22,
       ),
     );
   }
